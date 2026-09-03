@@ -1,0 +1,36 @@
+# Copy to rules/99_my_rule.yaml, then run:  python soc.py detect
+#
+# Rule language (implemented in soc/detection.py):
+#   logsource.dataset : list of normalized event.dataset values to scan (omitted -> all events)
+#   condition         : list of groups; each group is a dict of AND'ed matchers; groups are OR'ed
+#   filter            : same shape as condition - a match here drops the alert (FP control)
+#   threshold         : {field, distinct_field, min_events, min_distinct, window_minutes}
+#   requires          : {condition, min_count, window_minutes, key_fields} - prior-event sequence
+#   window            : {group_by, span_minutes, geo_field, min_distance_km} - grouped stats
+#   config            : {group_by, threshold, time_stats, exclude_processes} - baseline/anomaly
+#
+# Matchers: exact value | list (any of) | {exists: true} | {gte/lte/gt/lt: n} | {regex: '...'}
+#           {wildcard: '*x*'} | {cidr: ['10.0.0.0/8']} | special keys "@any_of", "@all", "tags"
+#
+# NOTE on YAML: always write regexes as a single-quoted value on its own line (block style).
+# Flow style like {regex: '...'} breaks when the pattern contains } or '.
+- id: SOC-EXAMPLE-999
+  name: Example rule - schtasks run by a service account
+  category: persistence
+  severity: informational
+  confidence: low
+  risk: 10
+  tactic: persistence
+  technique: [T1053.005]
+  description: Template that shows how quickly a detection engineer can add coverage.
+  logsource:
+    dataset: [process_creation]
+  condition:
+    - process.command_line:
+        regex: '(?i)schtasks\s+/create'
+      user.name:
+        regex: '(?i)^svc-'
+  threshold:
+    field: [host.name]
+    min_events: 1
+    window_minutes: 10

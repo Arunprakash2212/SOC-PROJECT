@@ -1,0 +1,40 @@
+# Offline "threat intel" feed for the demo. In a real SOC this is a MISP/TAXII/AbuseIPDB feed.
+ip:
+  "203.0.113.44":
+    category: brute-force
+    source: abuseipdb
+    confidence: 88
+    note: "2600 failed RDP/OWA attempts against 40+ tenants in 7 days"
+  "198.51.100.23":
+    category: scanner
+    source: internal-honeypot
+    confidence: 71
+    note: "Sequential SYN scan on 22/80/443/445/3389"
+  "192.0.2.99":
+    category: c2
+    source: feodo-block-list
+    confidence: 94
+    note: "Cobalt Strike beacon profile observed on 443/https"
+  "45.155.205.10":
+    category: anonymizer
+    source: tor-exit-list
+    confidence: 66
+    note: "Tor exit node; credential stuffing likely"
+  "203.0.113.77":
+    category: info-sec-scanning
+    source: vendor-advisory
+    confidence: 20
+    note: "Known legit vuln scanner (Qualys) - expect false positives"
+domain:
+  "login-secure-ms.com":
+    category: phishing
+    confidence: 91
+  "exfil-drop.cloud":
+    category: exfil-host
+    confidence: 84
+  "cdn-update-service.net":
+    category: c2
+    confidence: 90
+  "a1f3-update.net":
+    category: dga
+    confidence: 76

@@ -1,0 +1,109 @@
+# Impact, data destruction, initial access via web exploit, lateral movement.
+- id: SOC-RANSOM-030
+  name: Mass file encryption indicators
+  category: impact
+  severity: critical
+  confidence: high
+  risk: 98
+  tactic: impact
+  technique: [T1486, T1489]
+  description: >-
+    25+ file events per host in 10 minutes whose filename carries an encryption-style extension.
+    Volume-based rather than extension-exact, because the extension list is never complete and
+    ransomware families rename their drop every campaign.
+  logsource:
+    dataset: [file_event, process_creation]
+  condition:
+    - file.path:
+        regex: '(?i)\.(locked|encrypted|crypt|locked-[a-z0-9]{4,}|xyz26|encrypt)$'
+  threshold:
+    field: [host.name]
+    min_events: 25
+    window_minutes: 10
+  references:
+    - https://attack.mitre.org/techniques/T1486/
+
+- id: SOC-RANSOM-031
+  name: Ransom note written to user directories
+  category: impact
+  severity: critical
+  confidence: high
+  risk: 95
+  tactic: impact
+  technique: [T1486, T1489]
+  description: File create/rename whose name matches the usual ransom-note filenames.
+  logsource:
+    dataset: [file_event, process_creation]
+  condition:
+    - file.path:
+        regex: '(?i)(readme.*decrypt|how_to_recover|!!read_me|restore_files|ransom)\.(txt|html|hta)$'
+
+- id: SOC-DESTROY-032
+  name: Mass deletion of user data after encryption
+  category: impact
+  severity: high
+  confidence: medium
+  risk: 82
+  tactic: impact
+  technique: [T1485, T1490]
+  description: 20+ deletions inside user document shares from one host in 15 minutes (also catches wiper-only attacks).
+  logsource:
+    dataset: [file_event, process_creation]
+  condition:
+    - event.action: [file-delete, delete]
+      file.path:
+        regex: '(?i)\\(?:users|home)\\[^"]*\\(?:documents|desktop|downloads|finance|shared)\\'
+  threshold:
+    field: [host.name]
+    min_events: 20
+    window_minutes: 15
+
+- id: SOC-INIT-033
+  name: Exploit-framework request against a public web app
+  category: initial-access
+  severity: high
+  confidence: medium
+  risk: 68
+  tactic: initial-access
+  technique: [T1190]
+  description: >-
+    Log4Shell/JNDI, path traversal to /etc/passwd, .env and actuator probes, SQL boolean
+    tautologies - from a source with no matching approved-scan record.
+  logsource:
+    dataset: [web]
+  condition:
+    - url.path:
+        regex: '(?i)(\$\{jndi:|\$\{lower:|\.\./\.\./\.\./etc/passwd|/\.env$|/actuator/|/cgi-bin/)'
+    - url.path:
+        regex: '(?i)(\bor\b\s+1\s*=\s*1|union\s+select)'
+
+- id: SOC-LATERAL-034
+  name: Lateral SMB from a host that just ran a suspicious process
+  category: lateral-movement
+  severity: high
+  confidence: low
+  risk: 62
+  tactic: lateral-movement
+  technique: [T1021.002]
+  description: >-
+    Admin-share traffic (445/tcp) from a workstation to a server, ONLY when that same host had a
+    suspicious process launch in the previous hour. The sequence dependency is what stops this
+    from firing on every file-server user in the company - it is the difference between 400 noise
+    alerts and 1 real one.
+  logsource:
+    dataset: [firewall]
+  condition:
+    - destination.port: 445
+      event.action: [allow, accept]
+      source.ip:
+        exists: true
+  requires:
+    condition:
+      - "@any_of":
+          - process.name:
+              wildcard: '*powershell*'
+          - process.name:
+              regex: '(?i)^(mshta|rundll32|svcmon|svchost)\.exe$'
+    min_count: 1
+    window_minutes: 60
+    key_fields: [host.name]

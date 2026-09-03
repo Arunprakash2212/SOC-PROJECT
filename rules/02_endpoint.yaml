@@ -1,0 +1,185 @@
+# Execution, persistence, defense evasion, discovery (mostly Sysmon-shaped telemetry).
+- id: SOC-PSH-010
+  name: Obfuscated or download-and-execute PowerShell
+  category: execution
+  severity: high
+  confidence: high
+  risk: 80
+  tactic: execution
+  technique: [T1059.001]
+  description: >-
+    PowerShell launched with an encoded command, or pulling remote content into memory and
+    executing it, or touching AMSI. The filter list is why this can run at high severity without
+    destroying analyst trust: approved deployment tooling is excluded, everything else is read.
+  logsource:
+    dataset: [process_creation, authentication]
+  condition:
+    - process.name:
+        wildcard: '*powershell*'
+      "@any_of":
+        - process.command_line:
+            regex: '(?i)-enc(odedcommand)?\s+[A-Za-z0-9+/=]{16,}'
+        - process.command_line:
+            regex: '(?i)(downloadstring|downloadfile|iex\s*\(|invoke-expression|invoke-webrequest)'
+        - process.command_line:
+            regex: '(?i)(amsi.*stop|amsinitdisable)'
+  filter:
+    - process.command_line:
+        wildcard: '*githubusercontent.com*'
+    - user.name:
+        wildcard: 'svc-deploy*'
+  references:
+    - https://attack.mitre.org/techniques/T1059/001/
+
+- id: SOC-PERSIST-011
+  name: Scheduled task or autostart key pointing at a user-writable path
+  category: persistence
+  severity: high
+  confidence: high
+  risk: 75
+  tactic: persistence
+  technique: [T1053.005, T1547.001]
+  description: >-
+    schtasks /create - or a registry TaskCache/Run write - whose target resolves under AppData
+    or Temp. Survives reboot, no service needed, and the binary sits in a path the user can
+    write to, so it is the single most common persistence mechanism we see.
+  logsource:
+    dataset: [process_creation, registry]
+  condition:
+    - process.command_line:
+        regex: '(?i)schtasks\s+/create.*appdata'
+    - process.command_line:
+        regex: '(?i)schtasks\s+/create.*\\temp\\'
+    - registry.key:
+        regex: '(?i)(schedule\\taskcache|currentversion\\run)'
+      registry.value:
+        regex: '(?i)(appdata|\\temp\\)'
+
+- id: SOC-PROC-012
+  name: Office or mail client spawning a shell
+  category: execution
+  severity: high
+  confidence: medium
+  risk: 70
+  tactic: execution
+  technique: [T1204.002, T1059]
+  description: >-
+    cmd/powershell/wscript/cscript/mshta/rundll32 spawned by outlook, word, excel, powerpoint or
+    acrobat - the macro and document-exploit chain signature.
+  logsource:
+    dataset: [process_creation]
+  condition:
+    - process.parent:
+        regex: '(?i)(outlook|winword|excel|powerpnt|acrord32)\.exe$'
+      process.name:
+        regex: '(?i)^(cmd|powershell|wscript|cscript|mshta|rundll32)\.exe$'
+  filter:
+    - process.command_line:
+        wildcard: '*-noprofile -help*'
+
+- id: SOC-CRED-013
+  name: Credential dumping - handle opened on lsass.exe
+  category: credential_access
+  severity: critical
+  confidence: high
+  risk: 95
+  tactic: credential-access
+  technique: [T1003.001]
+  description: >-
+    Sysmon EventID 10 where the requested access mask includes VM_READ (0x10 / 0x14 / 0x1010 /
+    full) against lsass.exe. Filename-based rules miss this entirely; mask-based ones do not,
+    because the reading process can be anything.
+  logsource:
+    dataset: [process_access]
+  condition:
+    - target.process:
+        wildcard: '*lsass.exe*'
+      access_mask:
+        regex: '(?i)^0x(10|14|1010|1000|1fffff|1f0fff)$'
+
+- id: SOC-EVADE-014
+  name: Volume shadow copy deletion (pre-ransomware)
+  category: defense_evasion
+  severity: critical
+  confidence: high
+  risk: 92
+  tactic: defense-evasion
+  technique: [T1490]
+  description: vssadmin/wmic shadow-copy deletion or DISM removing recovery features. Near-zero false positives.
+  logsource:
+    dataset: [process_creation]
+  condition:
+    - process.command_line:
+        regex: '(?i)vssadmin.*delete\s+shadows'
+    - process.command_line:
+        regex: '(?i)wmic.*shadowcopy\s+(call\s+)?delete'
+    - process.command_line:
+        regex: '(?i)dism.*disable-feature.*bitlocker'
+
+- id: SOC-EVADE-015
+  name: Windows event log cleared
+  category: defense_evasion
+  severity: high
+  confidence: high
+  risk: 78
+  tactic: defense-evasion
+  technique: [T1070.001]
+  description: >-
+    wevtutil cl / Clear-EventLog, or Security log EventID 1102 outside the SIEM-agent
+    maintenance window (the window is what the filter encodes).
+  logsource:
+    dataset: [process_creation, log_clearing, authentication]
+  condition:
+    - process.command_line:
+        regex: '(?i)wevtutil\s+cl|clear-eventlog'
+    - event.id: "1102"
+  filter:
+    - user.name:
+        wildcard: 'svc-siemrotate*'
+
+- id: SOC-EVADE-016
+  name: Host firewall disabled
+  category: defense_evasion
+  severity: medium
+  confidence: high
+  risk: 55
+  tactic: defense-evasion
+  technique: [T1562.004]
+  description: netsh advfirewall set ... state off, or Set-NetFirewallProfile -Disabled.
+  logsource:
+    dataset: [process_creation]
+  condition:
+    - process.command_line:
+        regex: '(?i)netsh\s+advfirewall\s+set.*state\s+off'
+    - process.command_line:
+        regex: '(?i)set-netfirewallprofile.*disabled'
+
+- id: SOC-DISC-017
+  name: Account and host discovery commands
+  category: discovery
+  severity: low
+  confidence: medium
+  risk: 30
+  tactic: discovery
+  technique: [T1087.002, T1082, T1018]
+  description: >-
+    net user /domain, nltest /dclist, whoami /priv, systeminfo, net view - three or more from one
+    host in 10 minutes. Low severity on purpose: discovery is only interesting in sequence, and
+    sequences are exactly what the correlation layer is for.
+  logsource:
+    dataset: [process_creation]
+  condition:
+    - process.command_line:
+        regex: '(?i)net\s+user\s+\S+\s+/domain'
+    - process.command_line:
+        regex: '(?i)nltest\s+/dclist'
+    - process.command_line:
+        regex: '(?i)whoami\s+/priv'
+    - process.command_line:
+        regex: '(?i)systeminfo(\s|$)'
+    - process.command_line:
+        regex: '(?i)net\s+view(\s|$|\\)'
+  threshold:
+    field: [host.name]
+    min_events: 3
+    window_minutes: 10

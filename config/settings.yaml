@@ -1,0 +1,123 @@
+# SOC-PROJECT configuration: paths, scoring, correlation windows, playbooks.
+paths:
+  telemetry: data/telemetry
+  processed: data/processed
+  events: data/processed/events.jsonl
+  alerts: data/processed/alerts.jsonl
+  cases: data/processed/cases.json
+  timeline: data/processed/timeline.json
+  triage_state: data/processed/triage_state.jsonl
+  report: REPORT.md
+
+# Which raw sources exist and how to read them. type: jsonl | csv | apache | syslog
+sources:
+  auth:
+    file: auth_windows.jsonl
+    type: jsonl
+    source_type: Sysmon
+    dataset: authentication
+  process:
+    file: process_create.jsonl
+    type: jsonl
+    source_type: Sysmon
+    dataset: process_creation
+  web:
+    file: web_access.log
+    type: apache
+    source_type: Apache
+    dataset: web
+  proxy:
+    file: proxy_traffic.jsonl
+    type: jsonl
+    source_type: Proxy
+    dataset: proxy
+  firewall:
+    file: firewall.csv
+    type: csv
+    source_type: Firewall
+    dataset: firewall
+  dns:
+    file: dns_queries.tsv
+    type: csv
+    delimiter: "\t"
+    header: true
+    source_type: DNS
+    dataset: dns
+  ssh:
+    file: auth.log
+    type: syslog
+    source_type: SSH
+    dataset: auth
+
+# Alert score = min(100, severity_weight + entity/correlation boosts)
+scoring:
+  severity_weight:
+    critical: 60
+    high: 45
+    medium: 30
+    low: 15
+    informational: 5
+  boosts:
+    ip_in_threat_intel: 15
+    user_is_privileged: 12
+    user_risk_high: 8
+    host_is_critical: 10
+    multiple_entities: 5
+    exfil_bytes_gt_100mb: 10
+    payload_executed: 10
+  cap: 100
+
+# Correlation / case creation
+correlation:
+  window_minutes: 90
+  # Timing used for the ops metrics. Synthetic telemetry is anchored in the past, so metrics are
+  # computed on the DATASET clock, not the wall clock: detection_lag = when the sweep ran relative
+  # to the event; response_lag = how long a Tier-1 analyst took to contain after the alert.
+  detection_lag_minutes: 4
+  response_lag_minutes: 18
+  min_shared_entities: 1
+  auto_close_below_score: 40
+
+# Severity assigned purely from the MITRE tactic of the detection (used for triage sorting)
+tactic_severity:
+  impact: critical
+  credential-access: high
+  exfiltration: high
+  command-and-control: high
+  lateral-movement: high
+  persistence: medium
+  privilege-escalation: medium
+  defense-evasion: medium
+  discovery: low
+  collection: medium
+  reconnaissance: low
+  initial-access: high
+  resource-development: informational
+
+# Simulated SOAR: actions run for high-scoring incidents, matched on MITRE tactic.
+playbooks:
+  - name: block-bruteforce-source
+    when_tactics: [credential-access, initial-access]
+    actions:
+      - block_ip_at_waf
+      - disable_account
+      - force_password_reset
+  - name: isolate-compromised-host
+    when_tactics: [command-and-control, exfiltration, impact, persistence]
+    actions:
+      - isolate_host
+      - kill_process_tree
+      - quarantine_file
+  - name: reset-credentials-vpn
+    when_tactics: [lateral-movement, credential-access]
+    actions:
+      - revoke_sessions
+      - force_password_reset
+      - require_mfa_reenrollment
+  - name: advisory-only
+    when_tactics: [discovery]
+    actions:
+      - create_ticket
+
+rules_dir: rules
+intel: intel/threat_intel.yaml

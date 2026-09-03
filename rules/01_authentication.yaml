@@ -1,0 +1,168 @@
+# Authentication & identity detections.
+# Rule language reference: see rules/_template.yaml and soc/detection.py module docstring.
+- id: SOC-BRUTE-001
+  name: Brute-force authentication attempts from a single external source
+  category: credential_access
+  severity: high
+  confidence: high
+  risk: 70
+  tactic: credential-access
+  technique: [T1110, T1110.003]
+  description: >-
+    30+ failed logons attributed to one external source IP inside a 15 minute window. The
+    not-private filter keeps workstation typo-storms out of scope, which is what makes the
+    threshold usable without flooding.
+  logsource:
+    dataset: [authentication, auth]
+  condition:
+    - event.action: [failed-logon, authentication-failure]
+      source.ip:
+        exists: true
+      source.ip_not_private: true
+  threshold:
+    field: [source.ip]
+    min_events: 30
+    window_minutes: 15
+  references:
+    - https://attack.mitre.org/techniques/T1110/
+
+- id: SOC-BRUTE-002
+  name: SSH brute force against a Linux host
+  category: credential_access
+  severity: medium
+  confidence: high
+  risk: 55
+  tactic: credential-access
+  technique: [T1110, T1021.004]
+  description: 10+ SSH authentication failures from one source within 10 minutes.
+  logsource:
+    dataset: [auth]
+  condition:
+    - event.action: authentication-failure
+      source.ip:
+        exists: true
+  threshold:
+    field: [source.ip]
+    min_events: 10
+    window_minutes: 10
+
+- id: SOC-LOGIN-003
+  name: Successful logon from an external IP that was just brute-forcing
+  category: initial_access
+  severity: critical
+  confidence: high
+  risk: 90
+  tactic: initial-access
+  technique: [T1078, T1078.004]
+  description: >-
+    A successful authentication from an external IP that had already produced 10+ failures for
+    the same source in the previous 30 minutes. This is the "credentials are now valid" signal
+    that pages someone. Sequence rules like this are why we keep prior events indexed, not just
+    counts.
+  logsource:
+    dataset: [authentication, auth]
+  condition:
+    - event.action: [successful-logon, authentication-success]
+      source.ip:
+        exists: true
+      source.ip_not_private: true
+  requires:
+    condition:
+      - event.action: [failed-logon, authentication-failure]
+        source.ip_not_private: true
+    min_count: 10
+    window_minutes: 30
+    key_fields: [source.ip]
+
+- id: SOC-CSTUF-004
+  name: Password spray across many accounts from one source
+  category: credential_access
+  severity: medium
+  confidence: medium
+  risk: 50
+  tactic: credential-access
+  technique: [T1110.004]
+  description: >-
+    One external source failing against 6+ distinct accounts within 15 minutes. Counting
+    DISTINCT ACCOUNTS rather than failures is what separates a spray from one user who cannot
+    remember their password.
+  logsource:
+    dataset: [authentication, auth]
+  condition:
+    - event.action: [failed-logon, authentication-failure]
+      source.ip_not_private: true
+  threshold:
+    field: [source.ip]
+    distinct_field: user.name
+    min_events: 6
+    window_minutes: 15
+
+- id: SOC-IMPTVL-005
+  name: Impossible travel for a single account
+  category: initial_access
+  severity: high
+  confidence: medium
+  risk: 65
+  tactic: initial-access
+  technique: [T1078]
+  description: >-
+    Two successful logons for the same account from geolocated sources more than 400 km apart
+    within 60 minutes (haversine). Real deployments must subtract VPN concentrators and
+    "travel approved" tickets or this rule drowns the queue.
+  logsource:
+    dataset: [authentication, auth]
+  condition:
+    - event.action: [successful-logon, authentication-success]
+      source.ip:
+        exists: true
+      source.ip_not_private: true
+  window:
+    group_by: [user.name]
+    span_minutes: 60
+    geo_field: source.ip
+    min_distance_km: 400
+
+- id: SOC-OWA-006
+  name: Repeated web-mail authentication failures
+  category: credential_access
+  severity: low
+  confidence: low
+  risk: 20
+  tactic: credential-access
+  technique: [T1110.001]
+  description: >-
+    5+ HTTP 401s against the web-mail login page from one client. Kept deliberately at low
+    severity so triage has to promote or dismiss it - a worked example of alert triage.
+  logsource:
+    dataset: [web]
+  condition:
+    - url.path:
+        wildcard: '*auth.owa*'
+      http.response.status_code: 401
+  threshold:
+    field: [source.ip]
+    min_events: 5
+    window_minutes: 15
+
+- id: SOC-ACCT-007
+  name: New account created then added to a privileged group
+  category: persistence
+  severity: high
+  confidence: high
+  risk: 75
+  tactic: persistence
+  technique: [T1136.001, T1098.003]
+  description: >-
+    EventID 4720 (account created) followed by 4732 (member added to a privileged group) for the
+    same account within 20 minutes. The backdoor-account playbook; did not fire on this dataset,
+    which is itself the point of the coverage report.
+  logsource:
+    dataset: [authentication, auth]
+  condition:
+    - event.id: "4732"
+  requires:
+    condition:
+      - event.id: "4720"
+    min_count: 1
+    window_minutes: 20
+    key_fields: [user.name]
