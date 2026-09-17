@@ -27,14 +27,14 @@ No cloud services, no heavy installs. Just Python 3.10+ and PyYAML.
 
 | Time | Task | Done when |
 |---|---|---|
-| 0:00–0:30 | Scaffold: package layout, event schema (`soc/event_schema.py`), config loader | `python soc.py rules` lists rules |
-| 0:30–1:30 | Telemetry generator (`soc/telemetry.py`) — 7 sources, realistic benign noise + a full attack chain | `data/telemetry/*` non-empty, ~8k events |
-| 1:30–2:15 | Parsers + normalizer (`soc/parsers.py`), tolerant of malformed lines | `ingest` loads every source into one schema |
-| 2:15–3:15 | Detection engine (`soc/detection.py`): selectors, filters, thresholds (grouped + distinct), aggregation windows | `detect` fires the expected alerts, low FP |
-| 3:15–3:45 | Enrichment (`soc/enrich.py`): private-IP/RDNS-lite geo, threat-intel match, user risk, host criticality | alerts carry entities + score |
-| 3:45–4:15 | Correlation → incidents, scoring, dedup, playbooks (`soc/cases.py`) | incidents with TTP chains + response actions |
-| 4:15–4:45 | Live dashboard (`soc/dashboard.py`) + `report` (REPORT.md, metrics, ATT&CK coverage) | `soc.py run` then `serve` works |
-| 4:45–5:00 | Tests (`tests/test_soc.py`), README, viva prep | `python -m unittest discover tests` green |
+|  Scaffold: package layout, event schema (`soc/event_schema.py`), config loader | `python soc.py rules` lists rules |
+|  Telemetry generator (`soc/telemetry.py`) — 7 sources, realistic benign noise + a full attack chain | `data/telemetry/*` non-empty, ~8k events |
+|  Parsers + normalizer (`soc/parsers.py`), tolerant of malformed lines | `ingest` loads every source into one schema |
+|  Detection engine (`soc/detection.py`): selectors, filters, thresholds (grouped + distinct), aggregation windows | `detect` fires the expected alerts, low FP |
+|  Enrichment (`soc/enrich.py`): private-IP/RDNS-lite geo, threat-intel match, user risk, host criticality | alerts carry entities + score |
+|  Correlation → incidents, scoring, dedup, playbooks (`soc/cases.py`) | incidents with TTP chains + response actions |
+|  Live dashboard (`soc/dashboard.py`) + `report` (REPORT.md, metrics, ATT&CK coverage) | `soc.py run` then `serve` works |
+|  Tests (`tests/test_soc.py`), README, viva prep | `python -m unittest discover tests` green |
 
 Everything in this repo is inside that plan — nothing here needs more than 5 hours of your time to
 rebuild or extend.
