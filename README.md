@@ -23,7 +23,7 @@ No cloud services, no heavy installs. Just Python 3.10+ and PyYAML.
                                                                           └─────────────────────┘
 ```
 
-## 5-hour build plan (the timetable this project was built to)
+## build plan (the timetable this project was built to)
 
 | Time | Task | Done when |
 |---|---|---|
@@ -143,7 +143,7 @@ SOC-PROJECT/
 └── data/                  telemetry/, processed/ (events, alerts, cases, timeline, triage state)
 ```
 
-## 5-minute live demo script
+##live demo script
 
 1. `python soc.py run` — talk through each stage banner while it runs (~10 s).
 2. `python soc.py serve --port 8080` — open `http://localhost:8080`. Point at the KPI row,
